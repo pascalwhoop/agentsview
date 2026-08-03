@@ -975,10 +975,6 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 
-	if err := d.migrateColumns(); err != nil {
-		d.Close()
-		return nil, fmt.Errorf("migrating columns: %w", err)
-	}
 	if _, err := d.GetOrCreateDatabaseID(context.Background()); err != nil {
 		d.Close()
 		return nil, fmt.Errorf("initializing database id: %w", err)
@@ -990,6 +986,10 @@ func Open(path string) (*DB, error) {
 	if _, err := d.GetOrCreateArchiveSalt(context.Background()); err != nil {
 		d.Close()
 		return nil, fmt.Errorf("initializing archive salt: %w", err)
+	}
+	if err := d.migrateColumns(); err != nil {
+		d.Close()
+		return nil, fmt.Errorf("migrating columns: %w", err)
 	}
 	if err := d.EnsureProjectIdentityBackfillQueued(context.Background()); err != nil {
 		d.Close()
@@ -1473,6 +1473,10 @@ var readOnlyRequiredTables = []string{
 	"pg_sync_state",
 	"model_pricing",
 	"model_pricing_bands",
+	"source_archives",
+	"source_project_identity_observations",
+	"source_session_project_identity_snapshots",
+	"source_worktree_project_mappings",
 	"secret_findings",
 	"recall_entries",
 	"recall_evidence",
@@ -1514,6 +1518,13 @@ func readOnlyRequiredSchema() (map[string][]string, error) {
 		if _, err := conn.Exec(schemaSQL); err != nil {
 			readOnlyRequiredSchemaErr = fmt.Errorf(
 				"loading schema probe: %w", err,
+			)
+			return
+		}
+		store := bun.NewDB(conn, sqlitedialect.New())
+		if err := CreateCommonSchema(context.Background(), store); err != nil {
+			readOnlyRequiredSchemaErr = fmt.Errorf(
+				"loading common schema probe: %w", err,
 			)
 			return
 		}
@@ -2671,6 +2682,11 @@ func (db *DB) migrateColumns() error {
 		return err
 	}
 	if err := requeueInvalidArtifactPublicationsLocked(w); err != nil {
+		return err
+	}
+	if err := db.convergeSQLiteCommonSchemaLocked(
+		context.Background(), nil,
+	); err != nil {
 		return err
 	}
 
