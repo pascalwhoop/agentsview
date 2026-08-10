@@ -402,7 +402,10 @@ CREATE INDEX IF NOT EXISTS idx_provider_freshness_updated_at
 // fork to its original session as a continuation. Existing Claude rows need
 // re-parsing so already-ingested fork sessions drop their duplicated
 // messages and usage and stop appearing as unrelated top-level sessions.)
-const dataVersion = 83
+// (84: Canonical message timestamps. Unsupported provider timestamps are
+// blanked during ingestion, and a full resync repairs existing live, orphaned,
+// and trashed sessions so replication targets never receive malformed rows.)
+const dataVersion = 84
 
 const tokenCoverageRepairStatsKey = "token_coverage_repair_v1"
 
